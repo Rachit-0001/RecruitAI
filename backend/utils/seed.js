@@ -11,9 +11,13 @@ async function seed() {
   const conn = await pool.getConnection();
   try {
     await conn.query("SET FOREIGN_KEY_CHECKS = 0");
-    await conn.query(
-      "TRUNCATE TABLE ai_logs; TRUNCATE TABLE interviews; TRUNCATE TABLE applications; TRUNCATE TABLE candidates; TRUNCATE TABLE jobs; TRUNCATE TABLE users;"
-    );
+    await conn.query("TRUNCATE TABLE ai_logs");
+    await conn.query("TRUNCATE TABLE interviews");
+    await conn.query("TRUNCATE TABLE applications");
+    await conn.query("TRUNCATE TABLE candidates");
+    await conn.query("TRUNCATE TABLE jobs");
+    await conn.query("TRUNCATE TABLE users");
+    
     await conn.query("SET FOREIGN_KEY_CHECKS = 1");
 
     const [adminResult] = await conn.query(

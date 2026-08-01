@@ -1,9 +1,10 @@
-const { getModel } = require("../config/gemini");
+const ai = require("../config/gemini");
 const AiLogModel = require("../models/aiLogModel");
 const asyncHandler = require("../utils/asyncHandler");
 
 function extractJson(text) {
   const cleaned = text.replace(/```json|```/g, "").trim();
+
   try {
     return JSON.parse(cleaned);
   } catch {
@@ -11,32 +12,53 @@ function extractJson(text) {
   }
 }
 
-// POST /api/ai/resume-summary
+// ================= Resume Summary =================
+
 const resumeSummary = asyncHandler(async (req, res) => {
   const { resumeText, candidateId } = req.body;
+
   if (!resumeText) {
-    return res.status(400).json({ success: false, message: "resumeText is required" });
+    return res.status(400).json({
+      success: false,
+      message: "resumeText is required",
+    });
   }
 
-  const model = getModel();
-  const prompt = `You are a recruitment assistant. Write a concise, professional 3-4 sentence
-summary of this candidate's resume, highlighting key skills, experience level, and strengths.
-Return plain text only, no markdown.
+  const prompt = `
+You are an AI recruitment assistant.
+
+Write a concise professional summary (3-4 sentences) of the following resume.
 
 Resume:
-${resumeText}`;
+${resumeText}
+`;
 
-  const result = await model.generateContent(prompt);
-  const summary = result.response.text().trim();
+  const result = await ai.models.generateContent({
+    model: "gemini-flash-latest",
+    contents: prompt,
+  });
 
-  await AiLogModel.create({ candidate_id: candidateId || null, summary, match_score: null });
+  const summary = result.text.trim();
 
-  res.status(200).json({ success: true, data: { summary } });
+  await AiLogModel.create({
+    candidate_id: candidateId || null,
+    summary,
+    match_score: null,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      summary,
+    },
+  });
 });
 
-// POST /api/ai/job-match
+// ================= Job Match =================
+
 const jobMatch = asyncHandler(async (req, res) => {
   const { resumeText, jobDescription, candidateId } = req.body;
+
   if (!resumeText || !jobDescription) {
     return res.status(400).json({
       success: false,
@@ -44,27 +66,38 @@ const jobMatch = asyncHandler(async (req, res) => {
     });
   }
 
-  const model = getModel();
-  const prompt = `You are a recruitment AI. Compare this resume against the job description.
-Return ONLY valid JSON, no markdown fences, in this exact shape:
+  const prompt = `
+Compare this resume against the given job description.
+
+Return ONLY valid JSON.
+
 {
-  "matchPercentage": <number 0-100>,
-  "matchingSkills": [<string>, ...],
-  "missingSkills": [<string>, ...]
+  "matchPercentage": 90,
+  "matchingSkills": [],
+  "missingSkills": []
 }
 
 Resume:
 ${resumeText}
 
 Job Description:
-${jobDescription}`;
+${jobDescription}
+`;
 
-  const result = await model.generateContent(prompt);
-  const raw = result.response.text();
+  const result = await ai.models.generateContent({
+    model: "gemini-flash-latest",
+    contents: prompt,
+  });
+
+  const raw = result.text;
+
   const parsed = extractJson(raw);
 
   if (!parsed) {
-    return res.status(502).json({ success: false, message: "AI returned an unparseable response" });
+    return res.status(500).json({
+      success: false,
+      message: "AI returned invalid JSON",
+    });
   }
 
   await AiLogModel.create({
@@ -73,30 +106,61 @@ ${jobDescription}`;
     match_score: parsed.matchPercentage || null,
   });
 
-  res.status(200).json({ success: true, data: parsed });
+  res.json({
+    success: true,
+    data: parsed,
+  });
 });
 
-// POST /api/ai/interview-questions
+// ================= Interview Questions =================
+
 const interviewQuestions = asyncHandler(async (req, res) => {
   const { jobRole } = req.body;
+
   if (!jobRole) {
-    return res.status(400).json({ success: false, message: "jobRole is required" });
+    return res.status(400).json({
+      success: false,
+      message: "jobRole is required",
+    });
   }
 
-  const model = getModel();
-  const prompt = `Generate exactly 10 technical interview questions for the role: "${jobRole}".
-Return ONLY valid JSON, no markdown fences, in this exact shape:
-{ "questions": [<string>, ...] }`;
+  const prompt = `
+Generate exactly 10 technical interview questions for the role "${jobRole}".
 
-  const result = await model.generateContent(prompt);
-  const raw = result.response.text();
+Return ONLY valid JSON.
+
+{
+  "questions": [
+    "Question 1",
+    "Question 2"
+  ]
+}
+`;
+
+  const result = await ai.models.generateContent({
+    model: "gemini-flash-latest",
+    contents: prompt,
+  });
+
+  const raw = result.text;
+
   const parsed = extractJson(raw);
 
   if (!parsed) {
-    return res.status(502).json({ success: false, message: "AI returned an unparseable response" });
+    return res.status(500).json({
+      success: false,
+      message: "AI returned invalid JSON",
+    });
   }
 
-  res.status(200).json({ success: true, data: parsed });
+  res.json({
+    success: true,
+    data: parsed,
+  });
 });
 
-module.exports = { resumeSummary, jobMatch, interviewQuestions };
+module.exports = {
+  resumeSummary,
+  jobMatch,
+  interviewQuestions,
+};

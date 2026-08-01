@@ -97,13 +97,43 @@ All protected routes require `Authorization: Bearer <token>`.
   use a managed MySQL instance (e.g. Railway, PlanetScale, or Render's own MySQL add-on/external host).
 - **Frontend:** Vercel (once the React app is built in the next phase).
 
+## Frontend
+
+React 18 + Vite + Tailwind v4, React Router, Axios, Recharts, lucide-react.
+
+```
+frontend/
+├── src/
+│   ├── components/   # AppLayout (sidebar shell), StageTrack (pipeline visual), ui.jsx (primitives), ProtectedRoute
+│   ├── pages/         # Login, Dashboard, Candidates(+Detail), Jobs, Applications, Interviews, AiResumeAnalyzer, Settings
+│   ├── services/       # api.js (axios + JWT interceptor), index.js (per-module service calls)
+│   ├── context/        # AuthContext (login/register/logout, persisted token)
+│   └── index.css       # design tokens (colors, fonts) as Tailwind v4 @theme
+```
+
+### Setup
+
+```bash
+cd frontend
+cp .env.example .env   # set VITE_API_URL if backend isn't on localhost:5000
+npm install
+npm run dev             # http://localhost:5173
+```
+
+### Design
+
+Warm paper background, deep-teal primary with a burnt-sienna accent, Fraunces for display
+headings paired with Inter body text and JetBrains Mono for data/timestamps. The signature
+element is a small pipeline "stage tracker" (dot-and-line) used on the Applications table to
+visualize where each candidate sits in the hiring funnel — applied → shortlisted → interview → selected.
+
 ## Status
 
 - [x] Project structure, DB schema, seed data
 - [x] Auth module (register/login/profile, JWT, bcrypt)
 - [x] RBAC middleware
 - [x] Candidates, Jobs, Applications, Interviews modules (full CRUD)
-- [x] Dashboard analytics endpoint
+- [x] Dashboard analytics endpoint + charts
 - [x] AI module (resume summary, job match, interview questions) via Gemini
-- [ ] React frontend (next phase)
-- [ ] Deployment configs (render.yaml / vercel.json)
+- [x] React frontend — all 9 pages, builds clean
+- [x] Deployment configs (`render.yaml`, `frontend/vercel.json`) — see `DEPLOYMENT.md` for full steps

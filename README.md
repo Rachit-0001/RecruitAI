@@ -4,6 +4,9 @@ A production-style Recruitment CRM backend built with Node.js, Express, MySQL, J
 and Google Gemini for AI features. This is a fresh, standalone build (separate from any
 Prisma/Postgres version) using **MySQL + raw SQL (mysql2)**, per the original spec.
 
+## Website url-
+https://www.aevix.co.in/
+
 ## Tech Stack
 
 - **Backend:** Node.js, Express.js

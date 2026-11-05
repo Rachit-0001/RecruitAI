@@ -5,7 +5,7 @@ const asyncHandler = require("../utils/asyncHandler");
 
 // Gemini model configuration
 const GEMINI_MODEL =
-  process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  process.env.GEMINI_MODEL;
 
 // ================= Helper: Delay =================
 

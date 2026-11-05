@@ -1,11 +1,14 @@
-
 const ai = require("../config/gemini");
 const AiLogModel = require("../models/aiLogModel");
 const asyncHandler = require("../utils/asyncHandler");
 
-// Gemini model configuration
-const GEMINI_MODEL =
-  process.env.GEMINI_MODEL;
+// ================= Gemini Configuration =================
+
+const GEMINI_MODEL = process.env.GEMINI_MODEL;
+
+if (!GEMINI_MODEL) {
+  throw new Error("GEMINI_MODEL is missing from environment variables");
+}
 
 // ================= Helper: Delay =================
 
@@ -16,6 +19,7 @@ const delay = (ms) =>
 
 async function generateAI(prompt) {
   const maxAttempts = 3;
+  const retryableStatuses = [429, 500, 502, 503, 504];
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -32,24 +36,14 @@ async function generateAI(prompt) {
 
       return text.trim();
     } catch (error) {
-      const status =
-        error.status ||
-        error.statusCode ||
-        error.code;
-
-      const retryableStatuses = [
-        429, 500, 502, 503, 504,
-        "429",
-        "500",
-        "502",
-        "503",
-        "504",
-      ];
+      const status = Number(
+        error.status || error.statusCode || error.code
+      );
 
       const isRetryable = retryableStatuses.includes(status);
 
       console.error(
-        `Gemini API attempt ${attempt}/${maxAttempts} failed:`,
+        `Gemini attempt ${attempt}/${maxAttempts} failed:`,
         error.message
       );
 
@@ -68,6 +62,8 @@ async function generateAI(prompt) {
       await delay(1500 * Math.pow(2, attempt - 1));
     }
   }
+
+  throw new Error("Gemini request failed");
 }
 
 // ================= Helper: Extract JSON =================
@@ -76,15 +72,12 @@ function extractJson(text) {
   if (!text) return null;
 
   const cleaned = text
-    .replace(/```json/gi, "")
-    .replace(/```/g, "")
+    .replace(/```(?:json)?/gi, "")
     .trim();
 
-  // Try parsing the complete response
   try {
     return JSON.parse(cleaned);
   } catch {
-    // Extract JSON object from surrounding text
     const start = cleaned.indexOf("{");
     const end = cleaned.lastIndexOf("}");
 
@@ -93,7 +86,7 @@ function extractJson(text) {
     }
 
     try {
-      return JSON.parse(cleaned.substring(start, end + 1));
+      return JSON.parse(cleaned.slice(start, end + 1));
     } catch {
       return null;
     }
@@ -105,7 +98,7 @@ function extractJson(text) {
 const resumeSummary = asyncHandler(async (req, res) => {
   const { resumeText, candidateId } = req.body;
 
-  if (!resumeText || !resumeText.trim()) {
+  if (typeof resumeText !== "string" || !resumeText.trim()) {
     return res.status(400).json({
       success: false,
       message: "resumeText is required",
@@ -132,11 +125,9 @@ ${resumeText}
     match_score: null,
   });
 
-  return res.json({
+  return res.status(200).json({
     success: true,
-    data: {
-      summary,
-    },
+    data: { summary },
   });
 });
 
@@ -146,9 +137,9 @@ const jobMatch = asyncHandler(async (req, res) => {
   const { resumeText, jobDescription, candidateId } = req.body;
 
   if (
-    !resumeText ||
+    typeof resumeText !== "string" ||
     !resumeText.trim() ||
-    !jobDescription ||
+    typeof jobDescription !== "string" ||
     !jobDescription.trim()
   ) {
     return res.status(400).json({
@@ -160,18 +151,20 @@ const jobMatch = asyncHandler(async (req, res) => {
   const prompt = `
 Compare the candidate's resume against the job description.
 
-Return ONLY valid JSON.
-Do not include markdown or explanations.
+Return ONLY valid JSON without markdown.
 
-Required JSON structure:
+Required structure:
 {
   "matchPercentage": 90,
   "matchingSkills": [],
   "missingSkills": []
 }
 
-matchPercentage must be a number between 0 and 100.
-matchingSkills and missingSkills must be arrays of strings.
+Rules:
+- matchPercentage must be a number between 0 and 100.
+- matchingSkills must be an array of strings.
+- missingSkills must be an array of strings.
+- Do not invent candidate skills.
 
 Resume:
 ${resumeText}
@@ -186,8 +179,12 @@ ${jobDescription}
   if (
     !parsed ||
     typeof parsed.matchPercentage !== "number" ||
+    parsed.matchPercentage < 0 ||
+    parsed.matchPercentage > 100 ||
     !Array.isArray(parsed.matchingSkills) ||
-    !Array.isArray(parsed.missingSkills)
+    !Array.isArray(parsed.missingSkills) ||
+    !parsed.matchingSkills.every((item) => typeof item === "string") ||
+    !parsed.missingSkills.every((item) => typeof item === "string")
   ) {
     return res.status(502).json({
       success: false,
@@ -201,7 +198,7 @@ ${jobDescription}
     match_score: parsed.matchPercentage,
   });
 
-  return res.json({
+  return res.status(200).json({
     success: true,
     data: parsed,
   });
@@ -212,7 +209,7 @@ ${jobDescription}
 const interviewQuestions = asyncHandler(async (req, res) => {
   const { jobRole } = req.body;
 
-  if (!jobRole || !jobRole.trim()) {
+  if (typeof jobRole !== "string" || !jobRole.trim()) {
     return res.status(400).json({
       success: false,
       message: "jobRole is required",
@@ -225,8 +222,7 @@ for the following job role:
 
 ${jobRole}
 
-Return ONLY valid JSON.
-Do not include markdown or explanations.
+Return ONLY valid JSON without markdown.
 
 Required structure:
 {
@@ -244,7 +240,7 @@ Required structure:
   ]
 }
 
-The questions must be technically relevant to the role.
+All 10 questions must be technically relevant to the role.
 `;
 
   const raw = await generateAI(prompt);
@@ -254,7 +250,10 @@ The questions must be technically relevant to the role.
     !parsed ||
     !Array.isArray(parsed.questions) ||
     parsed.questions.length !== 10 ||
-    !parsed.questions.every((q) => typeof q === "string")
+    !parsed.questions.every(
+      (question) =>
+        typeof question === "string" && question.trim().length > 0
+    )
   ) {
     return res.status(502).json({
       success: false,
@@ -262,7 +261,7 @@ The questions must be technically relevant to the role.
     });
   }
 
-  return res.json({
+  return res.status(200).json({
     success: true,
     data: parsed,
   });
